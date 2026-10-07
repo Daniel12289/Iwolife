@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#06100b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>IWO LIFE V1.1 — Multiplayer</title>
+<link rel="stylesheet" href="style.css">
+<!-- Three.js from CDN (stable r160). Addons are imported by game.js -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<!-- Firebase (compat for simpler global access) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-database-compat.js"></script>
+</head>
+<body class="desktop">
+<canvas id="game"></canvas>
+
+<!-- ============ LOADING / WELCOME / AUTH ============ -->
+<div id="loading">
+  <div class="adire"></div>
+  <div class="load-card">
+    <div class="logo">IWO<b>LIFE</b></div>
+    <div class="ver">V1.1 MULTIPLAYER</div>
+    <div id="loadView">
+      <p id="loadSub" class="pulse">Loading Iwo...</p>
+      <div class="bar"><i id="loadBar"></i></div>
+      <div id="loadPct">0%</div>
+    </div>
+    <div id="welcome" hidden>
+      <h2>WELCOME TO IWO</h2>
+      <p>Your story starts here. Sign in to play with others.</p>
+      <div id="authPanel">
+        <input id="authEmail" type="email" placeholder="Email" autocomplete="username" inputmode="email">
+        <input id="authPass" type="password" placeholder="Password (min 6)" autocomplete="current-password">
+        <input id="authName" type="text" placeholder="Display name (new accounts)" maxlength="20" autocomplete="nickname" hidden>
+        <p id="authError" class="auth-err" hidden></p>
+        <button id="btnLogin" class="btn big" type="button">SIGN IN</button>
+        <button id="btnSignup" class="btn" type="button">CREATE ACCOUNT</button>
+        <button id="btnGuest" class="btn" type="button">PLAY AS GUEST (offline)</button>
+        <p id="authOfflineHint" class="note" hidden style="margin-top:.8em">Online login needs Firebase config in <code>game.js</code>. You can still play as Guest.</p>
+      </div>
+      <div id="authReady" hidden>
+        <p id="authUserLabel" class="note"></p>
+        <button id="btnPlay" class="btn big" type="button">ENTER IWO</button>
+        <button id="btnContinue" class="btn" type="button" hidden>CONTINUE SAVED GAME</button>
+        <button id="btnLogout" class="btn" type="button">SIGN OUT</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" hidden>
+  <div id="brand"><b>IWO LIFE</b><span>V1.1</span></div>
+  <button id="btnMenu" class="icon" aria-label="Menu">&#9776;</button>
+  <button id="btnPhone" class="icon phone-btn" aria-label="Phone">📱</button>
+
+  <div id="objective" hidden>
+    <div class="o-title">DELIVERY DRIVER</div>
+    <div id="objText">Deliver the package to the marked location.</div>
+  </div>
+
+  <div id="topright">
+    <div id="stats">
+      <div id="money">₦10,000</div>
+      <div id="daytime"><span id="day">DAY 1</span><span id="clock">08:00 AM</span></div>
+    </div>
+    <div id="mapwrap">
+      <canvas id="minimap" width="170" height="170"></canvas>
+      <button id="btnCam" class="icon sm" aria-label="Reset camera">&#10226;</button>
+    </div>
+    <div id="speedo" hidden>0 km/h</div>
+  </div>
+
+  <div id="zoneBanner"></div>
+  <div id="toast"></div>
+  <div id="bigToast"><h1></h1><p></p></div>
+  <div id="dialogue" hidden><b></b><p></p></div>
+
+  <div id="actions">
+    <div id="chips"></div>
+    <button id="prompt" hidden>PRESS E TO ENTER</button>
+  </div>
+
+  <div id="hint">
+    <span><kbd>WASD</kbd> Move</span><span><kbd>SHIFT</kbd> Sprint</span><span><kbd>SPACE</kbd> Jump</span>
+    <span><kbd>E</kbd> Interact</span><span><kbd>F</kbd> Enter/Exit Vehicle</span><span><kbd>P</kbd> Phone</span>
+    <span><kbd>ESC</kbd> Menu</span><span><kbd>DRAG</kbd> Camera</span>
+  </div>
+  <div id="fps" hidden>60 FPS</div>
+
+  <!-- Mobile controls (visible only in touch mode) -->
+  <div id="touch">
+    <div id="joyZone"><div id="joyBase"><div id="joyKnob"></div></div></div>
+    <button id="tAction" class="tbtn t-action">ACTION</button>
+    <button id="tJump" class="tbtn t-jump">JUMP</button>
+    <button id="tSprint" class="tbtn t-sprint">SPRINT</button>
+    <button id="tCar" class="tbtn t-car">CAR</button>
+    <button id="tPhone" class="tbtn t-phone">📱</button>
+  </div>
+</div>
+
+<!-- ============ PHONE UI ============ -->
+<div id="phone" class="overlay" hidden>
+  <div class="phone-frame">
+    <div class="phone-notch"></div>
+    <div class="phone-status">
+      <span id="phoneTime">08:00</span>
+      <span class="phone-sig">●●●● LTE</span>
+    </div>
+    <div id="phoneHome" class="phone-screen">
+      <div class="phone-user">
+        <div class="avatar" id="phoneAvatar">?</div>
+        <div>
+          <div id="phoneName">Player</div>
+          <div id="phoneWallet" class="gold">₦0</div>
+        </div>
+      </div>
+      <div class="app-grid">
+        <button class="app" data-app="chat"><span>💬</span><small>Chat</small></button>
+        <button class="app" data-app="wallet"><span>💰</span><small>Wallet</small></button>
+        <button class="app" data-app="build"><span>🏗️</span><small>Build</small></button>
+        <button class="app" data-app="services"><span>🛠️</span><small>Services</small></button>
+        <button class="app" data-app="apartment"><span>🏠</span><small>Apartment</small></button>
+        <button class="app" data-app="police"><span>🚨</span><small>Police</small></button>
+        <button class="app" data-app="players"><span>👥</span><small>Players</small></button>
+      </div>
+      <button class="btn phone-close" id="phoneClose">CLOSE PHONE</button>
+    </div>
+
+    <!-- Chat list -->
+    <div id="phoneChatList" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Messages</h3>
+        <button class="icon-sm" id="chatRefresh">↻</button>
+      </div>
+      <div id="chatUsers" class="list"></div>
+    </div>
+
+    <!-- Chat room -->
+    <div id="phoneChatRoom" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="chatList">‹</button>
+        <h3 id="chatWith">Chat</h3>
+        <button class="icon-sm" id="chatCall" title="Voice call (WebRTC)">📞</button>
+      </div>
+      <div id="chatMessages" class="chat-msgs"></div>
+      <div class="chat-input">
+        <input id="chatText" type="text" placeholder="Type a message..." maxlength="500">
+        <button id="chatSend">Send</button>
+      </div>
+    </div>
+
+    <!-- Wallet -->
+    <div id="phoneWalletApp" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Wallet</h3>
+      </div>
+      <div class="wallet-card">
+        <div class="label">Available Balance</div>
+        <div id="walletBal" class="bal">₦0</div>
+        <div class="sub" id="walletUid">—</div>
+      </div>
+      <p class="note pad">New accounts receive a ₦1,000,000 welcome bonus. Use it to buy an apartment, pay for services, or trade with other players.</p>
+    </div>
+
+    <!-- Services / Business skills -->
+    <div id="phoneServices" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Services</h3>
+      </div>
+      <div class="tabs phone-tabs">
+        <button class="on" data-stab="browse">BROWSE</button>
+        <button data-stab="mine">MY SKILLS</button>
+        <button data-stab="post">POST</button>
+      </div>
+      <div id="svcBrowse" class="list"></div>
+      <div id="svcMine" class="list" hidden></div>
+      <div id="svcPost" hidden>
+        <input id="svcSkill" type="text" placeholder="Skill (e.g. Mechanic, Tailor, Driver)" maxlength="40">
+        <input id="svcRate" type="number" placeholder="Rate (₦)" min="100" step="100">
+        <textarea id="svcDesc" placeholder="Short description..." maxlength="200"></textarea>
+        <button class="btn" id="svcSubmit">POST SKILL</button>
+      </div>
+    </div>
+
+    <!-- Apartment -->
+    <div id="phoneApartment" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Apartment</h3>
+      </div>
+      <div id="aptOwned" hidden>
+        <p class="note pad">You own an apartment. Customize it below.</p>
+        <div class="row"><span>Paint</span>
+          <select id="aptPaint">
+            <option value="0xe9dcc0">Cream</option>
+            <option value="0xf1d98a">Gold</option>
+            <option value="0xa9cfa0">Mint</option>
+            <option value="0x9ec9e0">Sky</option>
+            <option value="0xe8b4b8">Rose</option>
+            <option value="0xdc9455">Terracotta</option>
+          </select>
+        </div>
+        <div class="row"><span>Furniture</span>
+          <select id="aptFurn">
+            <option value="basic">Basic</option>
+            <option value="modern">Modern (+₦50,000)</option>
+            <option value="luxury">Luxury (+₦200,000)</option>
+          </select>
+        </div>
+        <button class="btn" id="aptSave">SAVE DESIGN</button>
+      </div>
+      <div id="aptBuy">
+        <p class="note pad">Buy your own apartment in Iwo for ₦350,000. Design the walls and furniture from the phone.</p>
+        <button class="btn big" id="aptPurchase">BUY APARTMENT — ₦350,000</button>
+      </div>
+    </div>
+
+    <!-- Build / Develop the world -->
+    <div id="phoneBuild" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Build</h3>
+      </div>
+      <p class="note pad">Develop Iwo! Place shops, houses and more. Structures are saved to the shared world so every player sees them.</p>
+      <div id="buildCatalog" class="list"></div>
+      <div id="buildMine" class="list small" style="margin-top:8px;border-top:1px solid rgba(245,184,46,.2);padding-top:8px"></div>
+    </div>
+
+    <!-- Police / Report -->
+    <div id="phonePolice" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Police</h3>
+      </div>
+      <p class="note pad">Report a player for harassment, scams, or rule-breaking. Reports are reviewed by moderators.</p>
+      <select id="reportUser"><option value="">Select player...</option></select>
+      <select id="reportReason">
+        <option value="harassment">Harassment</option>
+        <option value="scam">Scam / fraud</option>
+        <option value="spam">Spam</option>
+        <option value="other">Other</option>
+      </select>
+      <textarea id="reportNote" placeholder="Details (optional)" maxlength="300"></textarea>
+      <button class="btn" id="reportSubmit">SUBMIT REPORT</button>
+      <div id="reportList" class="list small"></div>
+    </div>
+
+    <!-- Online players -->
+    <div id="phonePlayers" class="phone-screen" hidden>
+      <div class="phone-header">
+        <button class="back" data-back="home">‹</button>
+        <h3>Online Players</h3>
+      </div>
+      <div id="playersList" class="list"></div>
+    </div>
+
+    <!-- WebRTC call overlay -->
+    <div id="phoneCall" class="phone-screen call-screen" hidden>
+      <div class="call-status" id="callStatus">Connecting...</div>
+      <div class="call-name" id="callName">—</div>
+      <div class="call-actions">
+        <button id="callHang" class="btn danger">END CALL</button>
+      </div>
+      <audio id="remoteAudio" autoplay playsinline></audio>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MENU ============ -->
+<div id="menu" class="overlay" hidden>
+  <div class="panel">
+    <div id="menuMain">
+      <h2>IWO LIFE <small>V1.1</small></h2>
+      <button class="btn big" data-menu="play">PLAY</button>
+      <button class="btn" data-menu="settings">SETTINGS</button>
+      <button class="btn" data-menu="save">SAVE GAME</button>
+      <button class="btn" data-menu="load">LOAD GAME</button>
+      <button class="btn" data-menu="about">ABOUT</button>
+    </div>
+    <div id="menuSettings" hidden>
+      <h2>SETTINGS</h2>
+      <p class="lbl">Graphics quality</p>
+      <div class="seg" id="qualSeg">
+        <button data-q="LOW">LOW</button><button data-q="MEDIUM">MEDIUM</button><button data-q="HIGH">HIGH</button>
+      </div>
+      <p class="note">LOW turns off shadows and glow effects and renders at a lower resolution. The game will also drop quality by itself if it runs slowly.</p>
+      <button class="btn" data-menu="fps">SHOW FPS: <span id="fpsState">OFF</span></button>
+      <button class="btn" data-menu="back">BACK</button>
+    </div>
+    <div id="menuAbout" hidden>
+      <h2>ABOUT</h2>
+      <p class="note">IWO LIFE V1.1 is an original life-sim made for the browser. The city is inspired by Iwo / Osogbo, Osun State, Nigeria. Multiplayer chat, wallet, services and reporting use Firebase. Voice calls use WebRTC.</p>
+      <p class="note"><b>Desktop:</b> WASD move, SHIFT sprint, SPACE jump, E interact, F vehicle, P phone, R camera, ESC menu.<br>
+      <b>Mobile:</b> joystick, ACTION / JUMP / SPRINT / CAR / 📱 buttons.</p>
+      <button class="btn" data-menu="back">BACK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL (shop, home, landmark info) ============ -->
+<div id="modal" class="overlay" hidden>
+  <div class="panel wide"><div id="modalBody"></div></div>
+</div>
+
+<script>
+  // If the module never boots (offline CDN, or opened with file://), tell the player what to do.
+  setTimeout(function () {
+    if (!window.__osogboBooted) {
+      var s = document.getElementById('loadSub');
+      if (s) { s.classList.remove('pulse'); s.textContent = 'Still loading? Check your internet (Three.js + Firebase load from CDN) and open the game through a web server (for example: python3 -m http.server), not by double-clicking the file.'; }
+    }
+  }, 12000);
+</script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
